@@ -44,6 +44,20 @@ def _fingerprint(path: Path) -> str:
     return digest.hexdigest()
 
 
+PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+
+
+def _validate_png(path: Path) -> bool:
+    """Reject anything that is not a real PNG before it is copied.
+
+    Reads the first 8 bytes and compares them against the PNG magic
+    signature (89 50 4E 47 0D 0A 1A 0A); anything else is not our artwork.
+    """
+    with path.open("rb") as stream:
+        magic = stream.read(len(PNG_SIGNATURE))
+    return magic == PNG_SIGNATURE
+
+
 def place_front_page() -> int:
     """Copy the bundled front page into the output slot, byte for byte."""
     source = _here() / ARTWORK_NAME
@@ -51,6 +65,14 @@ def place_front_page() -> int:
 
     if not source.is_file():
         print(f"missing bundled artwork: {source}", file=sys.stderr)
+        return 1
+
+    if not _validate_png(source):
+        print(
+            f"bundled artwork is not a valid PNG: {source} "
+            "(bad magic bytes, expected 89 50 4E 47 0D 0A 1A 0A)",
+            file=sys.stderr,
+        )
         return 1
 
     target.parent.mkdir(parents=True, exist_ok=True)
