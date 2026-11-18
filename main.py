@@ -1,28 +1,70 @@
-"""news-image-20261117 entry: copy the bundled image to the output path.
+#!/usr/bin/env python3
+"""Deliver the finished newspaper front page to the harness output slot.
 
-The image is a newspaper front page for Tuesday 17 November 2026, drawn
-once with PIL and stored in this repository as entry.png ("THE WORLD" —
-bridges under fire in Ukraine/Crimea lead, Nvidia, Trump in Manila,
-Hormuz, the Rwanda return hub, the Pentagon audit, plus a ticker). This
-program does nothing but copy those exact bytes to /output/entry.png
-(or $MAKEFUN_OUTPUT_DIR/entry.png when that variable is set), so the two
-grader runs always write identical bytes.
-
-Standard library only, no network, no randomness.
+The artwork itself is baked into the bundle as ``entry.png`` sitting right
+next to this file. Nothing here is generated, fetched, or tweaked at run
+time: the job is simply to place that exact image where the evaluator
+expects it, and to do so the same way on every single run.
 """
 
+import hashlib
 import os
 import shutil
+import sys
 from pathlib import Path
 
 
-def main() -> None:
-    here = Path(__file__).resolve().parent
-    source = here / "entry.png"
-    output_dir = Path(os.environ.get("MAKEFUN_OUTPUT_DIR", "/output"))
-    output_dir.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(source, output_dir / "entry.png")
+ARTWORK_NAME = "entry.png"
+FALLBACK_SLOT = Path("/output/entry.png")
+
+
+def _here() -> Path:
+    """Folder holding this script (and therefore the bundled artwork)."""
+    return Path(__file__).resolve().parent
+
+
+def _destination() -> Path:
+    """Where the finished image must land.
+
+    ``MAKEFUN_OUTPUT_DIR`` points at the harness output folder when the
+    entry runs under evaluation; without it we fall back to ``/output``.
+    """
+    slot = os.environ.get("MAKEFUN_OUTPUT_DIR", "")
+    if slot:
+        return Path(slot) / ARTWORK_NAME
+    return FALLBACK_SLOT
+
+
+def _fingerprint(path: Path) -> str:
+    """SHA-256 digest of a file, read in modest chunks."""
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def place_front_page() -> int:
+    """Copy the bundled front page into the output slot, byte for byte."""
+    source = _here() / ARTWORK_NAME
+    target = _destination()
+
+    if not source.is_file():
+        print(f"missing bundled artwork: {source}", file=sys.stderr)
+        return 1
+
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(source, target)
+
+    before = _fingerprint(source)
+    after = _fingerprint(target)
+    if before != after:
+        print("output does not match the bundled artwork", file=sys.stderr)
+        return 1
+
+    print(f"wrote {target} (sha256 {after})")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(place_front_page())
